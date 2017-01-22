@@ -53,6 +53,14 @@ current_call_frame = None
 current_call_frame_position = None
 source_map_state = None
 
+# Neil begin
+
+saved_params = []
+current_focus_group = None
+tempWindow = None
+
+# Neil end
+
 breakpoint_active_icon = 'Packages/Web Inspector/icons/breakpoint_active.png'
 breakpoint_inactive_icon = 'Packages/Web Inspector/icons/breakpoint_inactive.png'
 breakpoint_current_icon = 'Packages/Web Inspector/icons/breakpoint_current.png'
@@ -152,7 +160,7 @@ class SwiDebugStartChromeCommand(sublime_plugin.WindowCommand):
     def run(self):
         utils.assert_main_thread()
 
-        window = sublime.active_window()
+        window = sublime.active_window()        
         key = sublime.platform()
 
         # sublime.arch() is x86 on x64 Windows, presumably because it's a 32 bit app
@@ -184,6 +192,12 @@ class SwiDebugStartCommand(sublime_plugin.WindowCommand):
         urllib.request.install_opener(opener)
         response = urllib.request.urlopen('http://127.0.0.1:' + utils.get_setting('chrome_remote_port') + '/json')
         pages = json.loads(response.read().decode('utf-8'))
+
+        # Neil start
+        global saved_params
+        saved_params = []
+        # Neil end
+
         mapping = {}
         for page in pages:
             if 'webSocketDebuggerUrl' in page:
@@ -208,13 +222,16 @@ class SwiDebugStartCommand(sublime_plugin.WindowCommand):
 
         url = self.urls[index]
 
-        global window
-        window = sublime.active_window()
+        global tempWindow
+        tempWindow = sublime.active_window()
+        global current_focus_group
+        current_focus_group = tempWindow.active_group()        
 
         global original_layout
         original_layout = window.get_layout()
 
-        window.set_layout(utils.get_setting('console_layout'))
+        # Neil comment out
+        # window.set_layout(utils.get_setting('console_layout'))
 
         load_breaks()
 
@@ -584,6 +601,19 @@ class SwiDebugEvaluateCommand(sublime_plugin.WindowCommand):
     def run(self):
         utils.assert_main_thread()
         active_view = self.window.active_view()
+
+        # Neil start
+
+        global saved_params
+        saved_params = []
+
+        global tempWindow
+        tempWindow = sublime.active_window()
+        global current_focus_group
+        current_focus_group = tempWindow.active_group()        
+        
+        # Neil end
+
         regions = active_view.sel()
         for i in range(len(regions)):
             title = active_view.substr(regions[i])
@@ -596,7 +626,9 @@ class SwiDebugEvaluateCommand(sublime_plugin.WindowCommand):
 
     def evaluated(self, command):
         if command.data.type == 'object':
-            channel.send(webkit.Runtime.getProperties(command.data.objectId, True), console_add_properties, command.options)
+            # Neil modify
+            # channel.send(webkit.Runtime.getProperties(command.data.objectId, True), console_add_properties, command.options)
+            channel.send(webkit.Runtime.getProperties(command.data.objectId, True), track_and_add_properties, command.options)
         else:
             console_add_evaluate(command.data)
 
@@ -964,7 +996,8 @@ def update_stack(data):
     if utils.get_setting('enable_pause_overlay'):
         channel.send(webkit.Debugger.setOverlayMessage('Paused in Sublime Web Inspector'))
 
-    window.set_layout(utils.get_setting('stack_layout'))
+    # Neil comment out
+    # window.set_layout(utils.get_setting('stack_layout'))
 
     console_show_stack(callFrames)
 
@@ -988,9 +1021,13 @@ def change_to_call_frame(callFrame):
     global current_call_frame
     current_call_frame = callFrame.callFrameId
 
+    # Neil         
+    display_file_name = file_name.split('/')[-1]
+    display_file_name = display_file_name.split('\\')[-1] 
+
     global current_call_frame_position
     display_line_number = line_number + 1
-    current_call_frame_position = "%s:%s" % (file_name, display_line_number)
+    current_call_frame_position = "%s:%s" % (display_file_name, display_line_number)
 
     global current_file
     current_file = file_name
@@ -1001,7 +1038,9 @@ def change_to_call_frame(callFrame):
     open_script_and_focus_line_by_filename(file_name, line_number)
 
     params = {'objectId': first_scope.object.objectId, 'name': "%s:(%s, %s) (%s)" % (file_name, line_number, column_number, first_scope.type)}
-    channel.send(webkit.Runtime.getProperties(first_scope.object.objectId, True), console_add_properties, params)
+    # Neil modify
+    # channel.send(webkit.Runtime.getProperties(first_scope.object.objectId, True), console_add_properties, params)
+    channel.send(webkit.Runtime.getProperties(first_scope.object.objectId, True), track_and_add_properties, params)
 
 
 def console_repeat_message(count):
@@ -1023,13 +1062,17 @@ class SwiConsoleRepeatMessageInternalCommand(sublime_plugin.TextCommand):
 eval_object_queue = []
 
 def console_add_evaluate(eval_object):
+
     v = views.find_or_create_view('console')
 
     eval_object_queue.append(eval_object)
     v.run_command('swi_console_add_evaluate_internal')
 
     v.show(v.size())
-    window.focus_group(0)
+
+    # Neil
+    # window.focus_group(0)
+    tempWindow.focus_group(current_focus_group)
 
 class SwiConsoleAddEvaluateInternalCommand(sublime_plugin.TextCommand):
     """ Called internally on the console view """
@@ -1076,8 +1119,10 @@ class SwiConsoleAddMessageInternalCommand(sublime_plugin.TextCommand):
         if message.url:
             scriptId = find_script(message.url)
             if scriptId:
+                
                 url = message.url.split("/")[-1]
-            else:
+                url = message.url.split("\\")[-1] # Neil
+            else:                
                 url = message.url
         else:
             url = '---'
@@ -1098,7 +1143,9 @@ class SwiConsoleAddMessageInternalCommand(sublime_plugin.TextCommand):
         if len(message.parameters) > 0:
             for param in message.parameters:
                 if param.type == 'object': #if channel here
-                    v.print_click(edit, v.size(), str(param) + ' ', channel.send, webkit.Runtime.getProperties(param.objectId, True), console_add_properties, {'objectId': param.objectId})
+                    # Neil modify
+                    # v.print_click(edit, v.size(), str(param) + ' ', channel.send, webkit.Runtime.getProperties(param.objectId, True), console_add_properties, {'objectId': param.objectId})
+                    v.print_click(edit, v.size(), str(param) + ' ', channel.send, webkit.Runtime.getProperties(param.objectId, True), track_and_add_properties, {'objectId': param.objectId})
                 else:
                     v.insert(edit, v.size(), str(param) + ' ')
         else:
@@ -1111,7 +1158,9 @@ class SwiConsoleAddMessageInternalCommand(sublime_plugin.TextCommand):
 
             for callFrame in message.stackTrace:
                 scriptId = find_script(callFrame.url)
+                
                 file_name = callFrame.url.split('/')[-1]
+                file_name = callFrame.url.split('\\')[-1] # Neil                
 
                 v.insert(edit, v.size(),  '\t\u21E1 ')
 
@@ -1137,8 +1186,45 @@ def console_add_properties(params):
     v.run_command('swi_console_print_properties_internal')
 
     v.show(0)
-    window.focus_group(0)
+    # Neil
+    # window.focus_group(0)
+    tempWindow.focus_group(current_focus_group)
 
+# Neil begin
+def track_and_add_properties(params):
+    utils.assert_main_thread()
+
+    v = views.find_or_create_view('scope')
+
+    global saved_params        
+    saved_params.append(params)
+    console_add_properties(params)
+
+    properties_queue.append(params)
+    v.run_command('swi_console_print_properties_internal')
+
+    v.show(0)
+    # Neil
+    # window.focus_group(0)
+    tempWindow.focus_group(current_focus_group)
+
+def add_prior_properties():
+    utils.assert_main_thread()
+
+    v = views.find_or_create_view('scope')
+
+    # Remove current parameter set from stack
+    global saved_params
+    saved_params.pop()
+
+    properties_queue.append(saved_params[-1])
+    v.run_command('swi_console_print_properties_internal')
+
+    v.show(0)
+    # Neil
+    # window.focus_group(0)
+    tempWindow.focus_group(current_focus_group)
+# Neil end
 
 class SwiConsolePrintPropertiesInternalCommand(sublime_plugin.TextCommand):
     """ Called internally on the console view """
@@ -1153,7 +1239,8 @@ class SwiConsolePrintPropertiesInternalCommand(sublime_plugin.TextCommand):
             name = ""
 
         if 'file' in command.options and 'line' in command.options:
-            file = command.options['file']
+            # Neil
+            file = command.options['file']            
             line = command.options['line']
             column = command.options['column'] if 'column' in command.options else "0"
         else:
@@ -1186,6 +1273,7 @@ class SwiConsolePrintPropertiesInternalCommand(sublime_plugin.TextCommand):
                 column = position.zero_based_column()
 
             file = file.split('/')[-1]
+            file = file.split('\\')[-1] # Neil
 
             callback = lambda: open_script_and_focus_line_by_filename(file, line)
             display_line = line + 1
@@ -1195,16 +1283,30 @@ class SwiConsolePrintPropertiesInternalCommand(sublime_plugin.TextCommand):
 
         v.insert(edit, v.size(), "\n\n")
 
-        for prop in command.data:
+        # Neil start
+
+        if (len(saved_params) > 1):            
+            v.print_click(edit, v.size(), 'Up', add_prior_properties)
+            v.insert(edit, v.size(), "\n\n")
+
+        # Neil end
+
+        # Neil adjust        
+        # for prop in command.data:        
+        for prop in command.data[:15]:
             v.insert(edit, v.size(), prop.name + ': ')
             if (prop.value):
                 if prop.value.type == 'object':
                     params = {'objectId': prop.value.objectId, 'file': file, 'line': line, 'name': prop.name, 'prev': prev}
-                    v.print_click(edit, v.size(), str(prop.value) + '\n', channel.send, webkit.Runtime.getProperties(prop.value.objectId, True), console_add_properties, params)
+                    # Neil change
+                    # v.print_click(edit, v.size(), str(prop.value) + '\n', channel.send, webkit.Runtime.getProperties(prop.value.objectId, True), console_add_properties, params)
+                    v.print_click(edit, v.size(), str(prop.value) + '\n', channel.send, webkit.Runtime.getProperties(prop.value.objectId, True), track_and_add_properties, params)
                 else:
                     v.insert(edit, v.size(), str(prop.value) + '\n')
             else:
                 v.insert(edit, v.size(), '\n')
+
+        v.insert(edit, v.size(), '\n\nLength: %s\n' % len(command.data))
 
 call_frames_queue = []
 def console_show_stack(callFrames):
@@ -1216,7 +1318,10 @@ def console_show_stack(callFrames):
     v.run_command('swi_console_show_stack_internal')
 
     v.show(0)
+
+    # Neil
     window.focus_group(0)
+    # tempWindow.focus_group(current_focus_group)
 
 class SwiConsoleShowStackInternalCommand(sublime_plugin.TextCommand):
     """ Called internally on the stack view """
@@ -1250,6 +1355,7 @@ class SwiConsoleShowStackInternalCommand(sublime_plugin.TextCommand):
                     column = position.zero_based_column()
 
                 file_name = file_name.split('/')[-1]
+                file_name = file_name.split('\\')[-1] # Neil
             else:
                 file_name = '-'
 
@@ -1266,7 +1372,9 @@ class SwiConsoleShowStackInternalCommand(sublime_plugin.TextCommand):
                 v.insert(edit, v.size(), "\t")
                 if scope.object.type == 'object':
                     params = {'objectId': scope.object.objectId, 'name': "%s:(%s, %s) (%s)" % (file_name, line, column, scope.type)}
-                    v.print_click(edit, v.size(), "%s\n" % (scope.type), channel.send, webkit.Runtime.getProperties(scope.object.objectId, True), console_add_properties, params)
+                    # Neil modify
+                    # v.print_click(edit, v.size(), "%s\n" % (scope.type), channel.send, webkit.Runtime.getProperties(scope.object.objectId, True), console_add_properties, params)
+                    v.print_click(edit, v.size(), "%s\n" % (scope.type), channel.send, webkit.Runtime.getProperties(scope.object.objectId, True), track_and_add_properties, params)
                 else:
                     v.insert(edit, v.size(), "%s\n" % (scope.type))
 
