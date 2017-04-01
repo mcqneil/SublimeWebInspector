@@ -157,33 +157,45 @@ def find_or_create_view(console_type, create = True):
     found = False
     v = None
     window = sublime.active_window()
+    group = window.active_group() # Neil
 
+    windows = sublime.windows() # Neil
+
+    # Neil comment out
     if console_type.startswith('console'):
-        group = 1
+        # group = 1
         fullName = "Javascript Console"
 
     if console_type == 'stack':
-        group = 2
+        # group = 2
         fullName = "Javascript Callstack"
 
     if console_type.startswith('scope'):
-        group = 1
+        # group = 1
         fullName = "Javascript Scope"
 
     if console_type.startswith('mapping'):
-        group = 0
+        # group = 0
         fullName = "File mapping"
 
     if console_type.startswith('styles'):
-        group = 1
+        # group = 1
         fullName = "Styles"
 
-    window.focus_group(group)
+    # Neil comment out
+    # window.focus_group(group)
 
-    for v in window.views():
-        if v.name() == fullName:
-            found = True
-            break
+    for w in windows:  # Neil
+        # for v in window.views():
+        for v in w.views():
+            if v.name() == fullName:
+                found = True
+                window = w # Neil
+                group = w.get_view_index(v)[0] # Neil
+                break
+        else: # Neil
+            continue # Neil
+        break # Neil
 
     if not found and not create:
         return None

@@ -293,14 +293,19 @@ class SwiDebugStartCommand(sublime_plugin.WindowCommand):
         channel.send(webkit.Console.enable())
         channel.send(webkit.Debugger.canSetScriptSource(), self.canSetScriptSource)
 
+       
         #self.window.run_command('swi_styles_window')
 
         if utils.get_setting('user_agent') is not "":
             channel.send(webkit.Network.setUserAgentOverride(utils.get_setting('user_agent')))
 
         if utils.get_setting('reload_on_start'):
-            channel.send(webkit.Network.clearBrowserCache())
+            channel.send(webkit.Network.clearBrowserCache())  
+
+            # Neil          
             channel.send(webkit.Page.reload(), on_reload)
+            # channel.send(webkit.Page.reload(False), on_reload) # Neil
+            # channel.send(webkit.Page.navigate('http://localhost:8000/index.html'), on_navigate) # Neil
 
     def disconnected(self):
         """ Notification when socket disconnects """
@@ -738,8 +743,9 @@ class SwiDebugStopCommand(sublime_plugin.WindowCommand):
     def run(self):
         active_view = self.window.active_view()
 
-        close_all_our_windows()
-        clear_all_views()
+        # Neil
+        # close_all_our_windows()
+        # clear_all_views()
 
         disable_all_breakpoints()
 
@@ -906,7 +912,8 @@ class EventListener(sublime_plugin.EventListener):
             channel.send(webkit.Network.clearBrowserCache())
             if v.file_name().endswith('.css') or v.file_name().endswith('.less') or v.file_name().endswith('.sass') or v.file_name().endswith('.scss'):
                 sublime.set_timeout(lambda: self.reload_styles(), utils.get_setting('reload_timeout'))
-            elif v.file_name().endswith('.js'):
+            # Neil
+            elif v.file_name().endswith('.js'):            
                 scriptId = find_script(v.file_name())
                 if scriptId and set_script_source:
                     scriptSource = v.substr(sublime.Region(0, v.size()))
@@ -1019,6 +1026,7 @@ def change_to_call_frame(callFrame):
         column_number = position.zero_based_column()
 
     global current_call_frame
+
     current_call_frame = callFrame.callFrameId
 
     # Neil         
@@ -1293,7 +1301,7 @@ class SwiConsolePrintPropertiesInternalCommand(sublime_plugin.TextCommand):
 
         # Neil adjust        
         # for prop in command.data:        
-        for prop in command.data[:15]:
+        for prop in command.data[:50]:
             v.insert(edit, v.size(), prop.name + ': ')
             if (prop.value):
                 if prop.value.type == 'object':
